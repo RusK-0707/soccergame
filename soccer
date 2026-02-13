@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>2P Soccer Game</title>
+<style>
+body{
+  text-align:center;
+  background:#eee;
+}
+canvas{
+  background:#fff;
+  border:2px solid #000;
+}
+</style>
+</head>
+<body>
+
+<h3>2人対戦サッカー</h3>
+<p>
+左：A,D 移動 / W ジャンプ / S すくい上げ<br>
+右：←→ 移動 / ↑ ジャンプ
+</p>
+
+<canvas id="game" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const ground = 360;
+const gravity = 0.25;
+
+const keys = {};
+
+const goalWidth  = 10;
+const goalHeight = 100;
+
+const leftGoal = {
+  x: 0,
+  y: ground - goalHeight,
+  w: goalWidth,
+  h: goalHeight
+};
+
+const rightGoal = {
+  x: canvas.width - goalWidth,
+  y: ground - goalHeight,
+  w: goalWidth,
+  h: goalHeight
+};
+
+let score1 = 0;
+let score2 = 0;
+
+// プレイヤー
+const p1 = { x: 120, y: ground-40, w: 30, h: 40, vy: 0 };
+const p2 = { x: 650, y: ground-40, w: 30, h: 40, vy: 0 };
+
+// ボール
+const ball = {
+  x: 400,
+  y: 200,
+  r: 10,
+  vx: 0,
+  vy: 0
+};
+
+window.addEventListener("keydown", e => keys[e.code] = true);
+window.addEventListener("keyup",   e => keys[e.code] = false);
+
+function rectCircleHit(rect, c) {
+  const nx = Math.max(rect.x, Math.min(c.x, rect.x + rect.w));
+  const ny = Math.max(rect.y, Math.min(c.y, rect.y + rect.h));
+  const dx = c.x - nx;
+  const dy = c.y - ny;
+  return dx * dx + dy * dy < c.r * c.r;
+}
+
+function resetBall() {
+  ball.x = canvas.width / 2;
+  ball.y = 200;
+  ball.vx = 0;
+  ball.vy = 0;
+}
+
+function updatePlayer(p, left, right, jump) {
+
+  if (keys[left])  p.x -= 3;
+  if (keys[right]) p.x += 3;
+
+  if (keys[jump] && p.y >= ground - p.h) {
+    p.vy = -6;
+  }
+
+  p.vy += gravity;
+  p.y += p.vy;
+
+  if (p.y > ground - p.h) {
+    p.y = ground - p.h;
+    p.vy = 0;
+  }
+
+  if (p.x < 0) p.x = 0;
+  if (p.x + p.w > canvas.width) p.x = canvas.width - p.w;
+}
+
+function handleKick(p) {
+
+  if (!rectCircleHit(p, ball)) return;
+
+  const cx = p.x + p.w / 2;
+  const dir = (ball.x < cx) ? -1 : 1;
+
+  ball.vx += dir * 2;
+  ball.vy -= 2;
+}
+
+function updateBall() {
+
+  ball.vy += gravity;
+  ball.x += ball.vx;
+  ball.y += ball.vy;
+
+  // 地面
+  if (ball.y + ball.r > ground) {
+    ball.y = ground - ball.r;
+    ball.vy *= -0.6;
+    ball.vx *= 0.98;
+  }
+
+  // 左右の外壁（※ゴールの高さより上だけ当たり判定）
+  if (ball.x - ball.r < 0 &&
+      ball.y < leftGoal.y) {
+    ball.x = ball.r;
+    ball.vx *= -0.7;
+  }
+
+  if (ball.x + ball.r > canvas.width &&
+      ball.y < rightGoal.y) {
+    ball.x = canvas.width - ball.r;
+    ball.vx *= -0.7;
+  }
+
+  handleKick(p1);
+  handleKick(p2);
+
+  checkGoal();
+}
+
+/* ===========================
+   ゴール判定
+=========================== */
+
+function checkGoal() {
+
+  // 左ゴール（右の人の得点）
+  if (
+    ball.x - ball.r <= leftGoal.x + leftGoal.w &&
+    ball.y > leftGoal.y &&
+    ball.y < leftGoal.y + leftGoal.h
+  ) {
+    score2++;
+    resetBall();
+  }
+
+  // 右ゴール（左の人の得点）
+  if (
+    ball.x + ball.r >= rightGoal.x &&
+    ball.y > rightGoal.y &&
+    ball.y < rightGoal.y + rightGoal.h
+  ) {
+    score1++;
+    resetBall();
+  }
+}
+
+/* ===========================
+   Sキーですくい上げ（左のみ）
+=========================== */
+
+function liftBallByP1() {
+
+  const px = p1.x + p1.w / 2;
+  const py = p1.y + p1.h / 2;
+
+  const dx = ball.x - px;
+  const dy = ball.y - py;
+  const dist = Math.hypot(dx, dy);
+
+  if (dist < 35) {
+    ball.vy = -6;
+    ball.vx *= 0.5;
+  }
+}
+
+function update() {
+
+  updatePlayer(p1, "KeyA", "KeyD", "KeyW");
+  updatePlayer(p2, "ArrowLeft", "ArrowRight", "ArrowUp");
+
+  if (keys["KeyS"]) liftBallByP1();
+
+  updateBall();
+}
+
+function drawGoal(g) {
+  ctx.strokeRect(g.x, g.y, g.w, g.h);
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  // 地面
+  ctx.beginPath();
+  ctx.moveTo(0, ground);
+  ctx.lineTo(canvas.width, ground);
+  ctx.stroke();
+
+  // ゴール
+  drawGoal(leftGoal);
+  drawGoal(rightGoal);
+
+  // プレイヤー
+  ctx.fillStyle = "blue";
+  ctx.fillRect(p1.x, p1.y, p1.w, p1.h);
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(p2.x, p2.y, p2.w, p2.h);
+
+  // ボール
+  ctx.fillStyle = "black";
+  ctx.beginPath();
+  ctx.arc(ball.x, ball.y, ball.r, 0, Math.PI * 2);
+  ctx.fill();
+
+  // スコア
+  ctx.fillStyle = "#000";
+  ctx.font = "16px sans-serif";
+  ctx.fillText(score1 + "  -  " + score2, canvas.width/2 - 20, 20);
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resetBall();
+loop();
+</script>
+
+</body>
+</html>
+
+
+
